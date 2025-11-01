@@ -9,7 +9,9 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { getWordExtractor } from "@/utils/wordExtractor"
 import { OrcaPopup } from "@/components/orca-popup"
 import { LiveCaptions } from "@/components/live-captions"
+import { SilenceSurvey } from "@/components/silence-survey"
 import type { Orca } from "@/components/p5-wrapper"
+import { playRandomOrcaSoundtrack, stopAudio } from "@/utils/orcaAudio"
 
 // Dynamically import p5 wrapper to avoid SSR issues
 const P5Wrapper = dynamic(() => import("@/components/p5-wrapper"), {
@@ -21,10 +23,6 @@ const WordBubbleLayer = dynamic(() => import("@/components/word-bubble-layer"), 
   ssr: false,
 })
 
-const OceanBackground = dynamic(() => import("@/components/ocean-background"), {
-  ssr: false,
-})
-
 export function VisualizationCanvas() {
   const [isListening, setIsListening] = useState(false)
   const [isSilent, setIsSilent] = useState(false)
@@ -32,12 +30,14 @@ export function VisualizationCanvas() {
   const [audioLevel, setAudioLevel] = useState(0)
   const [words, setWords] = useState<string[]>([])
   const [selectedOrca, setSelectedOrca] = useState<Orca | null>(null)
+  const [surveyOrca, setSurveyOrca] = useState<Orca | null>(null)
 
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const silenceSoundtrackRef = useRef<HTMLAudioElement | null>(null)
 
   const isListeningRef = useRef(false)
   const isSilentRef = useRef(false)
@@ -66,6 +66,35 @@ export function VisualizationCanvas() {
   const handleOrcaClick = useCallback((orca: Orca) => {
     console.log(`[VisualizationCanvas] Orca clicked:`, orca.id)
     setSelectedOrca(orca)
+  }, [])
+
+  // Handle orca created (silence detected)
+  const handleOrcaCreated = useCallback((orca: Orca) => {
+    console.log(`[VisualizationCanvas] Orca created (silence detected):`, orca.id)
+
+    // Play random orca soundtrack with delay to avoid abort errors
+    setTimeout(() => {
+      try {
+        // Stop any currently playing silence soundtrack
+        if (silenceSoundtrackRef.current) {
+          try {
+            stopAudio(silenceSoundtrackRef.current)
+          } catch (stopError) {
+            // Ignore errors when stopping (audio might not be loaded yet)
+            console.log("[VisualizationCanvas] Previous audio already stopped")
+          }
+        }
+
+        // Play new soundtrack
+        silenceSoundtrackRef.current = playRandomOrcaSoundtrack(0.5)
+        console.log(`[VisualizationCanvas] Playing silence soundtrack for orca ${orca.id}`)
+      } catch (error) {
+        console.log("[VisualizationCanvas] Audio playback handled:", error)
+      }
+    }, 200) // Increased delay to 200ms
+
+    // Show survey popup
+    setSurveyOrca(orca)
   }, [])
 
   const {
@@ -150,6 +179,17 @@ export function VisualizationCanvas() {
     if (isSpeechListening) {
       stopSpeechRecognition()
       console.log("[WordCloud] Stopped speech recognition")
+    }
+
+    // Stop any playing silence soundtrack
+    if (silenceSoundtrackRef.current) {
+      try {
+        stopAudio(silenceSoundtrackRef.current)
+      } catch (error) {
+        // Ignore abort errors when stopping audio
+        console.log("[VisualizationCanvas] Audio cleanup handled")
+      }
+      silenceSoundtrackRef.current = null
     }
 
     // Reset word cloud
@@ -250,10 +290,7 @@ export function VisualizationCanvas() {
   }, [stopListening])
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
-      {/* Lightweight CSS Ocean Background */}
-      <OceanBackground emotionalColor={emotionalColor} audioLevel={audioLevel} />
-
+    <div className="relative w-full h-screen overflow-hidden bg-[#FBFBFA]">
       {/* P5.js Canvas for orcas and ripples */}
       <P5Wrapper
         emotionalColor={emotionalColor}
@@ -261,6 +298,7 @@ export function VisualizationCanvas() {
         isSilent={isSilent}
         currentWords={words}
         onOrcaClick={handleOrcaClick}
+        onOrcaCreated={handleOrcaCreated}
       />
 
       {/* Word Bubble Layer */}
@@ -275,6 +313,13 @@ export function VisualizationCanvas() {
         isListening={isListening}
       />
 
+      {/* Silence Survey */}
+      <SilenceSurvey
+        orca={surveyOrca}
+        onClose={() => setSurveyOrca(null)}
+        onStopListening={stopListening}
+      />
+
       {/* Orca Popup */}
       <OrcaPopup
         orca={selectedOrca}
@@ -285,18 +330,25 @@ export function VisualizationCanvas() {
       {/* Controls Overlay */}
       <div className="absolute top-0 left-0 right-0 p-6 z-40">
         <div className="flex items-center justify-between">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-2 bg-background/80 backdrop-blur-sm">
-              <Home className="w-4 h-4" />
-              Home
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="gap-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:bg-white border border-gray-200 shadow-sm">
+                <Home className="w-4 h-4" />
+                Home
+              </Button>
+            </Link>
+            <Link href="/memory">
+              <Button variant="ghost" size="sm" className="gap-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:bg-white border border-gray-200 shadow-sm">
+                🐋 Memory
+              </Button>
+            </Link>
+          </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {isListening && (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/80 backdrop-blur-sm text-sm">
-                <div className={`w-2 h-2 rounded-full ${isSilent ? "bg-accent" : "bg-primary"} animate-pulse`} />
-                <span className="text-foreground">{isSilent ? "Silence Detected" : "Listening"}</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 shadow-sm text-sm">
+                <div className={`w-2 h-2 rounded-full ${isSilent ? "bg-purple-500" : "bg-blue-500"} animate-pulse`} />
+                <span className="text-gray-700 font-medium">{isSilent ? "Silence Detected" : "Listening"}</span>
               </div>
             )}
 
@@ -304,7 +356,7 @@ export function VisualizationCanvas() {
               onClick={isListening ? stopListening : startListening}
               size="lg"
               variant={isListening ? "destructive" : "default"}
-              className="gap-2"
+              className={`gap-2 shadow-sm ${isListening ? "bg-red-600 hover:bg-red-700" : "bg-gray-900 hover:bg-gray-800"}`}
             >
               {isListening ? (
                 <>
@@ -325,13 +377,9 @@ export function VisualizationCanvas() {
       {/* Info Overlay */}
       {!isListening && (
         <div className="absolute inset-0 flex items-center justify-center z-0 pointer-events-none">
-          <div className="relative text-center space-y-4 max-w-md px-8 py-10 mx-6 rounded-[2rem] bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl animate-float">
-            {/* Bubble shine effect */}
-            <div className="absolute top-4 right-8 w-16 h-16 bg-white/20 rounded-full blur-2xl" />
-            <div className="absolute bottom-6 left-6 w-12 h-12 bg-white/10 rounded-full blur-xl" />
-
-            <h2 className="text-3xl font-bold text-white drop-shadow-lg relative z-10">Begin Your Journey</h2>
-            <p className="text-white/90 leading-relaxed drop-shadow-md relative z-10">
+          <div className="relative text-center space-y-4 max-w-md px-8 py-10 mx-6 rounded-2xl bg-white border border-gray-200 shadow-lg">
+            <h2 className="text-3xl font-bold text-gray-900">Begin Your Journey</h2>
+            <p className="text-gray-600 leading-relaxed">
               Click "Start Listening" to begin. Speak, breathe, or simply be still. Watch as your presence transforms
               into living art.
             </p>
@@ -341,7 +389,7 @@ export function VisualizationCanvas() {
 
       {isSilent && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
-          <div className="px-6 py-3 rounded-full bg-accent/90 backdrop-blur-sm text-accent-foreground text-sm font-medium">
+          <div className="px-6 py-3 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 text-sm font-medium shadow-sm">
             🐋 Orca echo playing...
           </div>
         </div>

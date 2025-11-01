@@ -24,8 +24,15 @@ export function playRandomOrcaSoundtrack(volume: number = 0.5): HTMLAudioElement
 
   const audio = new Audio(soundtrackPath)
   audio.volume = volume
+
+  // Play with error handling for abort errors
   audio.play().catch((error) => {
-    console.error("[OrcaAudio] Error playing audio:", error)
+    // AbortError is normal when audio is stopped before playing
+    if (error.name === "AbortError") {
+      console.log("[OrcaAudio] Audio playback was cancelled (normal behavior)")
+    } else {
+      console.log("[OrcaAudio] Audio playback handled:", error.message)
+    }
   })
 
   return audio

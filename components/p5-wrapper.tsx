@@ -10,6 +10,7 @@ interface P5WrapperProps {
   isSilent: boolean
   currentWords: string[]
   onOrcaClick?: (orca: Orca) => void
+  onOrcaCreated?: (orca: Orca) => void
 }
 
 export interface Orca {
@@ -33,7 +34,7 @@ export interface Orca {
   isPermanent: boolean
 }
 
-export default function P5Wrapper({ emotionalColor, audioLevel, isSilent, currentWords, onOrcaClick }: P5WrapperProps) {
+export default function P5Wrapper({ emotionalColor, audioLevel, isSilent, currentWords, onOrcaClick, onOrcaCreated }: P5WrapperProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const p5InstanceRef = useRef<p5 | null>(null)
   const propsRef = useRef({ emotionalColor, audioLevel, isSilent, currentWords })
@@ -44,6 +45,7 @@ export default function P5Wrapper({ emotionalColor, audioLevel, isSilent, curren
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 })
   const orcasRef = useRef<Orca[]>([])
   const onOrcaClickRef = useRef(onOrcaClick)
+  const onOrcaCreatedRef = useRef(onOrcaCreated)
 
   // Keep orcasRef in sync with state
   useEffect(() => {
@@ -53,6 +55,10 @@ export default function P5Wrapper({ emotionalColor, audioLevel, isSilent, curren
   useEffect(() => {
     onOrcaClickRef.current = onOrcaClick
   }, [onOrcaClick])
+
+  useEffect(() => {
+    onOrcaCreatedRef.current = onOrcaCreated
+  }, [onOrcaCreated])
 
   useEffect(() => {
     propsRef.current = { emotionalColor, audioLevel, isSilent, currentWords }
@@ -135,6 +141,11 @@ export default function P5Wrapper({ emotionalColor, audioLevel, isSilent, curren
           console.log(`[v0]   Angle: ${(angle * 180 / p.PI).toFixed(1)}°`)
           console.log(`[v0]   Captured ${currentWords.length} words: ${currentWords.slice(0, 5).join(', ')}${currentWords.length > 5 ? '...' : ''}`)
           console.log(`[v0]   Total orcas: ${orcas.length}`)
+
+          // Notify parent that a new orca was created
+          if (onOrcaCreatedRef.current) {
+            onOrcaCreatedRef.current(newOrca)
+          }
         }
         lastSilentState = silent
 

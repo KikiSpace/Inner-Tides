@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react"
 import { X } from "lucide-react"
 import type { Orca } from "./p5-wrapper"
-import { playRandomOrcaSoundtrack, stopAudio } from "@/utils/orcaAudio"
 
 interface OrcaPopupProps {
   orca: Orca | null
@@ -13,7 +12,6 @@ interface OrcaPopupProps {
 
 export function OrcaPopup({ orca, onClose, onStopListening }: OrcaPopupProps) {
   const popupRef = useRef<HTMLDivElement>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const hasStoppedListeningRef = useRef(false)
   const onStopListeningRef = useRef(onStopListening)
 
@@ -22,7 +20,7 @@ export function OrcaPopup({ orca, onClose, onStopListening }: OrcaPopupProps) {
     onStopListeningRef.current = onStopListening
   }, [onStopListening])
 
-  // Play random soundtrack and stop listening when popup opens
+  // Stop listening when popup opens
   useEffect(() => {
     if (orca) {
       // Stop listening to microphone (only once when popup opens)
@@ -31,38 +29,11 @@ export function OrcaPopup({ orca, onClose, onStopListening }: OrcaPopupProps) {
         onStopListeningRef.current()
         console.log("[OrcaPopup] Stopped listening to microphone")
       }
-
-      // Play random orca soundtrack with slight delay to avoid abort errors
-      const timer = setTimeout(() => {
-        audioRef.current = playRandomOrcaSoundtrack(0.6)
-        console.log(`[OrcaPopup] Playing soundtrack for orca ${orca.id}`)
-      }, 100)
-
-      return () => {
-        clearTimeout(timer)
-      }
     } else {
       // Reset flag when popup closes
       hasStoppedListeningRef.current = false
     }
-  }, [orca?.id]) // Only depend on orca ID
-
-  // Separate effect for cleanup
-  useEffect(() => {
-    return () => {
-      // Stop audio when popup closes
-      if (audioRef.current) {
-        // Use try-catch to handle any abort errors gracefully
-        try {
-          stopAudio(audioRef.current)
-          console.log("[OrcaPopup] Stopped soundtrack")
-        } catch (error) {
-          // Ignore abort errors
-          console.log("[OrcaPopup] Audio cleanup (already stopped)")
-        }
-      }
-    }
-  }, [])
+  }, [orca?.id])
 
   // Close on escape key
   useEffect(() => {
